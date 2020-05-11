@@ -8,6 +8,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
+	"google.golang.org/api/iterator"
 	"google.golang.org/appengine"
 	"google.golang.org/appengine/log"
 )
@@ -99,13 +100,19 @@ func main() {
 			c.String(501, err.Error())
 			return
 		}
-		b := client.Bucket(bucketName)
 
-		it := b.Objects(ctx, nil)
+		it := client.Bucket(bucketName).Objects(ctx, nil)
 
 		olist := []string{}
-		for it.PageInfo().Remaining() != 0 {
-			o, _ := it.Next()
+		for {
+			o, err := it.Next()
+			if err == iterator.Done {
+				break
+			}
+			if err != nil {
+				c.String(501, err.Error())
+				return
+			}
 			olist = append(olist, o.Name)
 		}
 
