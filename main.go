@@ -8,8 +8,8 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
-	"github.com/joho/godotenv"
 	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 )
 
 var (
@@ -19,8 +19,7 @@ var (
 
 func main() {
 
-	godotenv.Load()
-	bucketName := os.Getenv("BUCKET_NAME")
+	bucketName = os.Getenv("BUCKET_NAME")
 
 	r := gin.Default()
 
@@ -37,31 +36,37 @@ func main() {
 		client, err := storage.NewClient(ctx)
 		if err != nil {
 			c.JSON(501, gin.H{"error": err.Error()})
+			return
 		}
 
 		fname := uuid.Must(uuid.NewV4()).String() + path.Ext(fh.Filename)
 
 		o := client.Bucket(bucketName).Object(fname)
 
-		if err := o.ACL().Set(ctx, storage.AllUsers, storage.RoleReader); err != nil {
-			c.JSON(501, gin.H{"error": err.Error()})
-		}
+		// if err := o.ACL().Set(ctx, storage.AllUsers, storage.RoleReader); err != nil {
+		// 	c.JSON(501, gin.H{"error": err.Error()})
+		// 	return
+		// }
 
 		w := o.NewWriter(ctx)
 		w.ContentType = fh.Header.Get("Content-Type")
-		// w.ACL = []storage.ACLRule{{Entity: storage.AllUsers, Role: storage.RoleReader}}
+		w.ACL = []storage.ACLRule{{Entity: storage.AllUsers, Role: storage.RoleReader}}
 
-		w.CacheControl = "public, max-age=86400"
+		// w.CacheControl = "public, max-age=86400"
 
 		if _, err := io.Copy(w, f); err != nil {
 			c.JSON(501, gin.H{"error": err.Error()})
+			return
 		}
 
 		if err := w.Close(); err != nil {
-			c.JSON(501, gin.H{"error": err.Error()})
+			log.Warningf(ctx, err.Error())
 		}
 
-		c.JSON(200, gin.H{"name": fname})
+		c.JSON(200, gin.H{
+			"object": fname,
+			"bucket": bucketName,
+		})
 	})
 
 	r.GET("/media/:name", func(c *gin.Context) {
@@ -70,12 +75,14 @@ func main() {
 		client, err := storage.NewClient(c.Request.Context())
 		if err != nil {
 			c.String(501, err.Error())
+			return
 		}
 		obj := client.Bucket(bucketName).Object(name)
 
 		attrs, err := obj.Attrs(c.Request.Context())
 		if err != nil {
 			c.String(404, err.Error())
+			return
 		}
 
 		c.HTML(200, "image.tmpl", gin.H{
@@ -83,9 +90,38 @@ func main() {
 		})
 	})
 
+	r.GET("/media", func(c *gin.Context) {
+
+		ctx := appengine.NewContext(c.Request)
+
+		client, err := storage.NewClient(ctx)
+		if err != nil {
+			c.String(501, err.Error())
+			return
+		}
+		b := client.Bucket(bucketName)
+
+		it := b.Objects(ctx, nil)
+
+		olist := []string{}
+		for it.PageInfo().Remaining() != 0 {
+			o, _ := it.Next()
+			olist = append(olist, o.Name)
+		}
+
+		c.JSON(200, gin.H{
+			"bucket":  bucketName,
+			"objects": olist,
+		})
+	})
+
 	// history api fallback
 	r.NoRoute(func(c *gin.Context) {
 		c.File("/vueDist/index.html")
+	})
+
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(301, "/uploader")
 	})
 
 	r.Run()

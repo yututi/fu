@@ -1,0 +1,10 @@
+runtime: go112
+
+default_expiration: "7d"
+
+includes:
+  - secret.yaml
+
+# handlers:
+#   - url: /uploader
+#     static_dir: vueDist

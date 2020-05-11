@@ -18,11 +18,19 @@
           <button class="fu-btn mt-10" @click="upload">Upload</button>
         </template>
         <template v-else>
-          <input type="text" readonly :value="imageRefUrl">
+          <button class="fu-btn fu-btn--large" @click="copyToClipboard">copy to clipboard</button>
         </template>
       </template>
     </app-modal>
     <input type="file" class="fu-file" style="display:none;" @change="fileSelected" />
+    <div class="media mt-10">
+      <button class="fu-btn" @click="getMediaList">show existing files</button>
+      <ol class="media-list">
+        <li class="media-list__item" v-for="object in objects" :key="object">
+          <a :href="mediaLink(object)">{{object}}</a>
+        </li>
+      </ol>
+    </div>
   </div>
 </template>
 
@@ -38,7 +46,9 @@ export default {
       file: null,
       url: "",
       showPreview: false,
-      uploadedObjectName: ""
+      uploadedObjectName: "",
+      bucket: "",
+      objects: []
     };
   },
   methods: {
@@ -83,7 +93,22 @@ export default {
         body: data
       });
       var resBody = await res.json();
-      this.uploadedObjectName = resBody.name;
+      this.uploadedObjectName = resBody.object;
+      this.bucket = resBody.bucket;
+    },
+    getMediaList: async function() {
+      var res = await fetch("/media");
+      var resBody = await res.json();
+      this.objects = resBody.objects;
+      this.bucket = resBody.bucket;
+    },
+    mediaLink: function(object) {
+      // see https://cloud.google.com/storage/docs/request-endpoints
+      return `https://storage.googleapis.com/${this.bucket}/${object}`;
+    },
+    copyToClipboard: async function() {
+      await navigator.clipboard.writeText(this.mediaLink(this.uploadedObjectName))
+      // todo: popup notification
     }
   },
   computed: {
@@ -93,7 +118,7 @@ export default {
       };
     },
     imageRefUrl: function() {
-      return `${window.location.href}/media/${this.uploadedObjectName}`
+      return `${location.protocol}${location.hostname}/media/${this.uploadedObjectName}`;
     }
   }
 };
@@ -153,5 +178,16 @@ export default {
 }
 .mt-10 {
   margin-top: 10px;
+}
+
+.media {
+  max-width: 680px;
+  width: 100%;
+  text-align: left;
+}
+.media-list {
+  &__item {
+    text-align: left;
+  }
 }
 </style>
